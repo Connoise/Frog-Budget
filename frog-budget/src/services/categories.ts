@@ -46,7 +46,7 @@ export const categoryService = {
     if (error) throw error
   },
 
-  async reorder(userId: string, orderedIds: string[]): Promise<void> {
+  async reorder(_userId: string, orderedIds: string[]): Promise<void> {
     for (let i = 0; i < orderedIds.length; i++) {
       const { error } = await supabase
         .from('categories')
