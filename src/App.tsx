@@ -23,6 +23,7 @@ import {
   Menu,
   Upload,
   ChevronLeft,
+  Heart,
 } from 'lucide-react'
 import {
   BarChart,
@@ -41,7 +42,7 @@ import {
 } from 'recharts'
 
 import { useBudgetStore } from './stores'
-import { useAuth, useProfile, useCategories, usePurchases, useAnalytics } from './hooks'
+import { useAuth, useProfile, useCategories, usePurchases, useWishlist, useAnalytics } from './hooks'
 import {
   formatCurrency,
   formatShortDate,
@@ -52,7 +53,7 @@ import {
   cn,
   exportToCSV,
 } from './utils'
-import type { PurchaseFormData, CategoryFormData } from './types/supabase'
+import type { PurchaseFormData, CategoryFormData, WishlistFormData } from './types/supabase'
 
 // ============================================
 // AUTH SCREEN
@@ -166,6 +167,7 @@ function Sidebar() {
     { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'purchases' as const, label: 'Purchases', icon: Receipt },
     { id: 'budgets' as const, label: 'Budgets', icon: PieChart },
+    { id: 'wishlist' as const, label: 'Wishlist', icon: Heart },
     { id: 'analysis' as const, label: 'Analysis', icon: BarChart3 },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
   ]
@@ -301,6 +303,7 @@ function MobileHeader() {
     dashboard: 'Dashboard',
     purchases: 'Purchases',
     budgets: 'Budgets',
+    wishlist: 'Wishlist',
     analysis: 'Analysis',
     settings: 'Settings',
   }
@@ -385,10 +388,20 @@ function CSVImportModal() {
         setHeaders(parsed[0])
         setCsvData(parsed.slice(1))
         
-        // Auto-detect columns
+        // Auto-detect columns - prioritize transaction date over post date
         const headerLower = parsed[0].map(h => h.toLowerCase())
+        const findDateColumn = () => {
+          // Prioritize transaction date columns
+          let idx = headerLower.findIndex(h => h.includes('transaction') && h.includes('date'))
+          if (idx >= 0) return parsed[0][idx]
+          idx = headerLower.findIndex(h => h.includes('trans.') && h.includes('date'))
+          if (idx >= 0) return parsed[0][idx]
+          // Fallback to any date column
+          idx = headerLower.findIndex(h => h.includes('date'))
+          return idx >= 0 ? parsed[0][idx] : ''
+        }
         setColumnMapping({
-          date: parsed[0][headerLower.findIndex(h => h.includes('date') || h.includes('posted'))] || '',
+          date: findDateColumn(),
           name: parsed[0][headerLower.findIndex(h => h.includes('description') || h.includes('name') || h.includes('merchant'))] || '',
           amount: parsed[0][headerLower.findIndex(h => h.includes('amount') || h.includes('debit') || h.includes('charge'))] || '',
           category: parsed[0][headerLower.findIndex(h => h.includes('category') || h.includes('type'))] || '',
@@ -440,9 +453,18 @@ function CSVImportModal() {
     for (const row of csvData) {
       try {
         let amount = parseFloat(row[amountIdx]?.replace(/[$,]/g, '') || '0')
+
+        // Skip credits, payments, and refunds (negative amounts in Discover format)
+        if (amount < 0) continue
+
         amount = Math.abs(amount)
-        
+
         if (amount <= 0 || !row[nameIdx]) continue
+
+        // Skip payment/credit descriptions
+        const description = row[nameIdx].toLowerCase()
+        if (description.includes('payment') || description.includes('credit') ||
+            description.includes('refund') || description.includes('cashback bonus')) continue
 
         // Parse date - try multiple formats
         let dateStr = row[dateIdx]
@@ -1007,6 +1029,191 @@ function CategoryModal() {
 }
 
 // ============================================
+// WISHLIST FORM MODAL
+// ============================================
+function WishlistModal() {
+  const { showAddWishlist, setShowAddWishlist, editingWishlist, setEditingWishlist } = useBudgetStore()
+  const { categories } = useCategories()
+  const { createWishlistItem, editWishlistItem } = useWishlist()
+
+  const [formData, setFormData] = useState<WishlistFormData>({
+    name: '',
+    amount: '',
+    category_id: '',
+    notes: '',
+    priority: 'medium',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (editingWishlist) {
+      setFormData({
+        name: editingWishlist.name,
+        amount: editingWishlist.amount.toString(),
+        category_id: editingWishlist.category_id,
+        notes: editingWishlist.notes || '',
+        priority: editingWishlist.priority,
+      })
+    } else {
+      setFormData({
+        name: '',
+        amount: '',
+        category_id: categories[0]?.id || '',
+        notes: '',
+        priority: 'medium',
+      })
+    }
+  }, [editingWishlist, categories])
+
+  const handleClose = () => {
+    setShowAddWishlist(false)
+    setEditingWishlist(null)
+    setError('')
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setSaving(true)
+
+    try {
+      const amount = parseFloat(formData.amount)
+      if (isNaN(amount) || amount < 0) {
+        throw new Error('Please enter a valid amount')
+      }
+
+      if (editingWishlist) {
+        await editWishlistItem(editingWishlist.id, {
+          name: formData.name,
+          amount,
+          category_id: formData.category_id,
+          notes: formData.notes || null,
+          priority: formData.priority,
+        })
+      } else {
+        await createWishlistItem({
+          name: formData.name,
+          amount,
+          category_id: formData.category_id,
+          notes: formData.notes || null,
+          priority: formData.priority,
+        })
+      }
+
+      handleClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save wishlist item')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!showAddWishlist) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md animate-fade-in">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            {editingWishlist ? 'Edit Wishlist Item' : 'Add to Wishlist'}
+          </h2>
+          <button onClick={handleClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <X size={20} className="text-gray-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Item Name *</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-frog-500"
+              placeholder="What do you want to buy?"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estimated Cost *</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.amount}
+                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  className="w-full pl-7 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-frog-500"
+                  placeholder="0.00"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Priority *</label>
+              <select
+                value={formData.priority}
+                onChange={(e) => setFormData({ ...formData, priority: e.target.value as 'low' | 'medium' | 'high' })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-frog-500"
+                required
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category *</label>
+            <select
+              value={formData.category_id}
+              onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-frog-500"
+              required
+            >
+              <option value="">Select category</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-frog-500 resize-none"
+              rows={2}
+              placeholder="Optional notes..."
+            />
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-lg text-sm">{error}</div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={handleClose} className="flex-1 py-2 px-4 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} className="flex-1 py-2 px-4 bg-frog-600 hover:bg-frog-700 text-white rounded-lg disabled:opacity-50">
+              {saving ? 'Saving...' : editingWishlist ? 'Update' : 'Add to Wishlist'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
 // DASHBOARD TAB
 // ============================================
 function DashboardTab() {
@@ -1440,10 +1647,126 @@ function BudgetsTab() {
 }
 
 // ============================================
+// WISHLIST TAB
+// ============================================
+function WishlistTab() {
+  const { setShowAddWishlist, setEditingWishlist } = useBudgetStore()
+  const { wishlist, removeWishlistItem } = useWishlist()
+  const { categories } = useCategories()
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+
+  const getCategoryName = (categoryId: string) => categories.find((c) => c.id === categoryId)?.name || 'Unknown'
+  const getCategoryColor = (categoryId: string) => categories.find((c) => c.id === categoryId)?.color || '#6b7280'
+
+  const handleDelete = async (id: string) => {
+    try {
+      await removeWishlistItem(id)
+      setDeleteConfirm(null)
+    } catch (error) {
+      console.error('Failed to delete:', error)
+    }
+  }
+
+  const totalWishlistCost = wishlist.reduce((sum, item) => sum + item.amount, 0)
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high':
+        return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+      case 'low':
+        return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+      default:
+        return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Wishlist</h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            {wishlist.length} {wishlist.length === 1 ? 'item' : 'items'} • Total: {formatCurrency(totalWishlistCost)}
+          </p>
+        </div>
+        <button onClick={() => setShowAddWishlist(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-frog-600 hover:bg-frog-700 text-white rounded-lg transition-colors">
+          <Plus size={20} />
+          <span>Add Item</span>
+        </button>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        {wishlist.length === 0 ? (
+          <div className="p-8 text-center">
+            <Heart size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">No wishlist items yet</h3>
+            <p className="text-gray-500 dark:text-gray-400 mb-4">Add items you're planning to purchase</p>
+            <button onClick={() => setShowAddWishlist(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-frog-600 hover:bg-frog-700 text-white rounded-lg">
+              <Plus size={18} />Add Item
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            {wishlist.map((item) => (
+              <div key={item.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: getCategoryColor(item.category_id) + '20' }}>
+                      <Heart size={18} style={{ color: getCategoryColor(item.category_id) }} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-gray-900 dark:text-white truncate">{item.name}</div>
+                      <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400 flex-wrap">
+                        <span className="truncate">{getCategoryName(item.category_id)}</span>
+                        <span>•</span>
+                        <span className={cn('px-2 py-0.5 rounded text-xs font-medium capitalize', getPriorityColor(item.priority))}>
+                          {item.priority}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                    <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(item.amount)}</span>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setEditingWishlist(item)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg">
+                        <Edit2 size={16} className="text-gray-500" />
+                      </button>
+                      {deleteConfirm === item.id ? (
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => handleDelete(item.id)} className="p-1.5 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 rounded-lg">
+                            <Check size={16} className="text-red-600" />
+                          </button>
+                          <button onClick={() => setDeleteConfirm(null)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg">
+                            <X size={16} className="text-gray-500" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setDeleteConfirm(item.id)} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg">
+                          <Trash2 size={16} className="text-gray-500 hover:text-red-500" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {item.notes && <div className="mt-2 ml-13 text-sm text-gray-500 dark:text-gray-400">{item.notes}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================
 // ANALYSIS TAB
 // ============================================
 function AnalysisTab() {
-  const { categoryBudgets, monthlySnapshots, dailySpending } = useAnalytics()
+  const [includeWishlist, setIncludeWishlist] = useState(false)
+  const { categoryBudgets, monthlySnapshots, dailySpending, totalWishlistCost } = useAnalytics(includeWishlist)
+  const { wishlist } = useBudgetStore()
 
   const pieData = categoryBudgets.map((cb) => ({
     name: cb.category.name,
@@ -1464,10 +1787,40 @@ function AnalysisTab() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Analysis</h1>
-        <p className="text-gray-600 dark:text-gray-400">Visualize your spending patterns</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Analysis</h1>
+          <p className="text-gray-600 dark:text-gray-400">Visualize your spending patterns</p>
+        </div>
+        {wishlist.length > 0 && (
+          <div className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-700">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeWishlist}
+                onChange={(e) => setIncludeWishlist(e.target.checked)}
+                className="w-4 h-4 text-frog-600 rounded focus:ring-2 focus:ring-frog-500"
+              />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Include Wishlist</span>
+            </label>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              ({formatCurrency(totalWishlistCost)})
+            </span>
+          </div>
+        )}
       </div>
+
+      {includeWishlist && wishlist.length > 0 && (
+        <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Heart size={18} className="text-purple-500" />
+            <h3 className="font-semibold text-purple-700 dark:text-purple-400">Wishlist Projection</h3>
+          </div>
+          <p className="text-sm text-purple-600 dark:text-purple-300">
+            Showing analytics as if all {wishlist.length} wishlist {wishlist.length === 1 ? 'item' : 'items'} ({formatCurrency(totalWishlistCost)}) were purchased this month.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
@@ -1648,6 +2001,7 @@ function App() {
   useProfile()
   useCategories()
   usePurchases()
+  useWishlist()
 
   if (isLoading) {
     return (
@@ -1678,12 +2032,14 @@ function App() {
           {activeTab === 'dashboard' && <DashboardTab />}
           {activeTab === 'purchases' && <PurchasesTab />}
           {activeTab === 'budgets' && <BudgetsTab />}
+          {activeTab === 'wishlist' && <WishlistTab />}
           {activeTab === 'analysis' && <AnalysisTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </main>
       </div>
       <PurchaseModal />
       <CategoryModal />
+      <WishlistModal />
       <CSVImportModal />
     </div>
   )

@@ -16,6 +16,11 @@ export interface Database {
         Insert: Omit<Purchase, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<Purchase, 'id' | 'user_id' | 'created_at'>>
       }
+      wishlist: {
+        Row: WishlistItem
+        Insert: Omit<WishlistItem, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<WishlistItem, 'id' | 'user_id' | 'created_at'>>
+      }
     }
   }
 }
@@ -53,6 +58,18 @@ export interface Purchase {
   amount: number
   date: string
   notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WishlistItem {
+  id: string
+  user_id: string
+  category_id: string
+  name: string
+  amount: number
+  notes: string | null
+  priority: 'low' | 'medium' | 'high'
   created_at: string
   updated_at: string
 }
@@ -142,4 +159,12 @@ export interface ProfileFormData {
   income_amount: string
   income_frequency: 'weekly' | 'biweekly' | 'monthly'
   currency: string
+}
+
+export interface WishlistFormData {
+  name: string
+  amount: string
+  category_id: string
+  notes: string
+  priority: 'low' | 'medium' | 'high'
 }

@@ -5,7 +5,8 @@ import { purchaseService } from '../services/purchases'
 import { categoryService } from '../services/categories'
 import { profileService } from '../services/profiles'
 import { analyticsService } from '../services/analytics'
-import type { Purchase, Category, CategoryBudget, MonthlySnapshot, DailySpending, Alert, Profile } from '../types/supabase'
+import { wishlistService } from '../services/wishlist'
+import type { Purchase, Category, WishlistItem, CategoryBudget, MonthlySnapshot, DailySpending, Alert, Profile } from '../types/supabase'
 
 export function useAuth() {
   const { user, setUser, setProfile, setIsLoading } = useBudgetStore()
@@ -297,7 +298,95 @@ export function usePurchases() {
   }
 }
 
-export function useAnalytics(): {
+export function useWishlist() {
+  const { user, wishlist, setWishlist, addWishlistItem, updateWishlistItem, deleteWishlistItem } = useBudgetStore()
+
+  const loadWishlist = useCallback(async () => {
+    if (!user) return
+
+    try {
+      const data = await wishlistService.getAll(user.id)
+      setWishlist(data)
+    } catch (error) {
+      console.error('Error loading wishlist:', error)
+    }
+  }, [user, setWishlist])
+
+  useEffect(() => {
+    loadWishlist()
+  }, [loadWishlist])
+
+  useEffect(() => {
+    if (!user) return
+
+    const channel = supabase
+      .channel('wishlist-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'wishlist',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadWishlist()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user, loadWishlist])
+
+  const createWishlistItem = async (data: Omit<WishlistItem, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
+    if (!user) return
+
+    try {
+      const newItem = await wishlistService.create({
+        ...data,
+        user_id: user.id,
+      })
+      addWishlistItem(newItem)
+      return newItem
+    } catch (error) {
+      console.error('Error creating wishlist item:', error)
+      throw error
+    }
+  }
+
+  const editWishlistItem = async (id: string, updates: Partial<WishlistItem>) => {
+    try {
+      const updated = await wishlistService.update(id, updates)
+      updateWishlistItem(id, updated)
+      return updated
+    } catch (error) {
+      console.error('Error updating wishlist item:', error)
+      throw error
+    }
+  }
+
+  const removeWishlistItem = async (id: string) => {
+    try {
+      await wishlistService.delete(id)
+      deleteWishlistItem(id)
+    } catch (error) {
+      console.error('Error deleting wishlist item:', error)
+      throw error
+    }
+  }
+
+  return {
+    wishlist,
+    loadWishlist,
+    createWishlistItem,
+    editWishlistItem,
+    removeWishlistItem,
+  }
+}
+
+export function useAnalytics(includeWishlist = false): {
   categoryBudgets: CategoryBudget[]
   monthlySnapshots: MonthlySnapshot[]
   dailySpending: DailySpending[]
@@ -305,8 +394,11 @@ export function useAnalytics(): {
   projections: { projected: number; budgeted: number; daysRemaining: number; dailyAverage: number }
   totalSpentThisMonth: number
   totalBudgetedThisMonth: number
+  totalWishlistCost: number
 } {
-  const { profile, categories, purchases } = useBudgetStore()
+  const { profile, categories, purchases, wishlist } = useBudgetStore()
+
+  const totalWishlistCost = wishlist.reduce((sum, item) => sum + item.amount, 0)
 
   if (!profile || categories.length === 0) {
     return {
@@ -317,14 +409,27 @@ export function useAnalytics(): {
       projections: { projected: 0, budgeted: 0, daysRemaining: 0, dailyAverage: 0 },
       totalSpentThisMonth: 0,
       totalBudgetedThisMonth: 0,
+      totalWishlistCost,
     }
   }
 
-  const categoryBudgets = analyticsService.calculateCategoryBudgets(categories, purchases, profile)
+  // Create simulated purchases from wishlist items if needed
+  const simulatedPurchases = includeWishlist
+    ? wishlist.map((item) => ({
+        ...item,
+        date: new Date().toISOString().split('T')[0], // Today's date
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }))
+    : []
+
+  const combinedPurchases = includeWishlist ? [...purchases, ...simulatedPurchases] : purchases
+
+  const categoryBudgets = analyticsService.calculateCategoryBudgets(categories, combinedPurchases, profile)
   const monthlySnapshots = analyticsService.getMonthlySnapshots(purchases, categories, profile, 12)
   const dailySpending = analyticsService.getDailySpending(purchases, 30)
-  const alerts = analyticsService.generateAlerts(categoryBudgets, purchases)
-  const projections = analyticsService.getProjections(categoryBudgets, purchases)
+  const alerts = analyticsService.generateAlerts(categoryBudgets, combinedPurchases)
+  const projections = analyticsService.getProjections(categoryBudgets, combinedPurchases)
 
   const totalSpentThisMonth = categoryBudgets.reduce((sum, cb) => sum + cb.spent.thisMonth, 0)
   const totalBudgetedThisMonth = categoryBudgets.reduce((sum, cb) => sum + cb.budgeted.monthly, 0)
@@ -337,5 +442,6 @@ export function useAnalytics(): {
     projections,
     totalSpentThisMonth,
     totalBudgetedThisMonth,
+    totalWishlistCost,
   }
 }

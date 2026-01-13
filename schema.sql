@@ -52,6 +52,22 @@ CREATE TABLE IF NOT EXISTS purchases (
 );
 
 -- ============================================
+-- WISHLIST TABLE
+-- Future purchase items
+-- ============================================
+CREATE TABLE IF NOT EXISTS wishlist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    category_id UUID NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+    name TEXT NOT NULL,
+    amount DECIMAL(12, 2) NOT NULL CHECK (amount >= 0),
+    notes TEXT,
+    priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================
 -- INDEXES
 -- ============================================
 CREATE INDEX IF NOT EXISTS idx_purchases_user_id ON purchases(user_id);
@@ -59,6 +75,9 @@ CREATE INDEX IF NOT EXISTS idx_purchases_category_id ON purchases(category_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases(date);
 CREATE INDEX IF NOT EXISTS idx_purchases_user_date ON purchases(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);
+CREATE INDEX IF NOT EXISTS idx_wishlist_user_id ON wishlist(user_id);
+CREATE INDEX IF NOT EXISTS idx_wishlist_category_id ON wishlist(category_id);
+CREATE INDEX IF NOT EXISTS idx_wishlist_priority ON wishlist(priority);
 
 -- ============================================
 -- ROW LEVEL SECURITY (RLS)
@@ -68,6 +87,7 @@ CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wishlist ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 CREATE POLICY "Users can view their own profile"
@@ -116,6 +136,23 @@ CREATE POLICY "Users can delete their own purchases"
     ON purchases FOR DELETE
     USING (auth.uid() = user_id);
 
+-- Wishlist policies
+CREATE POLICY "Users can view their own wishlist"
+    ON wishlist FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create their own wishlist items"
+    ON wishlist FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own wishlist items"
+    ON wishlist FOR UPDATE
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own wishlist items"
+    ON wishlist FOR DELETE
+    USING (auth.uid() = user_id);
+
 -- ============================================
 -- AUTO-CREATE PROFILE ON SIGNUP
 -- ============================================
@@ -159,6 +196,10 @@ CREATE TRIGGER update_categories_updated_at
 
 CREATE TRIGGER update_purchases_updated_at
     BEFORE UPDATE ON purchases
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_wishlist_updated_at
+    BEFORE UPDATE ON wishlist
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
@@ -218,6 +259,7 @@ ORDER BY date DESC;
 ALTER PUBLICATION supabase_realtime ADD TABLE purchases;
 ALTER PUBLICATION supabase_realtime ADD TABLE categories;
 ALTER PUBLICATION supabase_realtime ADD TABLE profiles;
+ALTER PUBLICATION supabase_realtime ADD TABLE wishlist;
 
 -- ============================================
 -- GRANT PERMISSIONS

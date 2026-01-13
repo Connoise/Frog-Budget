@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Profile, Category, Purchase, FilterOptions, Alert } from '../types/supabase'
+import type { Profile, Category, Purchase, WishlistItem, FilterOptions, Alert } from '../types/supabase'
 
-export type TabType = 'dashboard' | 'purchases' | 'budgets' | 'analysis' | 'settings'
+export type TabType = 'dashboard' | 'purchases' | 'budgets' | 'analysis' | 'settings' | 'wishlist'
 
 interface BudgetState {
   // Auth
@@ -25,6 +25,12 @@ interface BudgetState {
   addPurchase: (purchase: Purchase) => void
   updatePurchase: (id: string, updates: Partial<Purchase>) => void
   deletePurchase: (id: string) => void
+
+  wishlist: WishlistItem[]
+  setWishlist: (items: WishlistItem[]) => void
+  addWishlistItem: (item: WishlistItem) => void
+  updateWishlistItem: (id: string, updates: Partial<WishlistItem>) => void
+  deleteWishlistItem: (id: string) => void
 
   // UI State
   activeTab: TabType
@@ -60,6 +66,11 @@ interface BudgetState {
   setShowAddCategory: (show: boolean) => void
   editingCategory: Category | null
   setEditingCategory: (category: Category | null) => void
+
+  showAddWishlist: boolean
+  setShowAddWishlist: (show: boolean) => void
+  editingWishlist: WishlistItem | null
+  setEditingWishlist: (item: WishlistItem | null) => void
 
   // Sidebar
   sidebarCollapsed: boolean
@@ -119,6 +130,22 @@ export const useBudgetStore = create<BudgetState>()(
           purchases: state.purchases.filter((p) => p.id !== id),
         })),
 
+      // Wishlist
+      wishlist: [],
+      setWishlist: (items) => set({ wishlist: items }),
+      addWishlistItem: (item) =>
+        set((state) => ({ wishlist: [item, ...state.wishlist] })),
+      updateWishlistItem: (id, updates) =>
+        set((state) => ({
+          wishlist: state.wishlist.map((w) =>
+            w.id === id ? { ...w, ...updates } : w
+          ),
+        })),
+      deleteWishlistItem: (id) =>
+        set((state) => ({
+          wishlist: state.wishlist.filter((w) => w.id !== id),
+        })),
+
       // UI State
       activeTab: 'dashboard',
       setActiveTab: (tab) => set({ activeTab: tab }),
@@ -166,6 +193,12 @@ export const useBudgetStore = create<BudgetState>()(
       setShowAddCategory: (show) => set({ showAddCategory: show, editingCategory: show ? null : null }),
       editingCategory: null,
       setEditingCategory: (category) => set({ editingCategory: category, showAddCategory: !!category }),
+
+      // Wishlist modals
+      showAddWishlist: false,
+      setShowAddWishlist: (show) => set({ showAddWishlist: show, editingWishlist: show ? null : null }),
+      editingWishlist: null,
+      setEditingWishlist: (item) => set({ editingWishlist: item, showAddWishlist: !!item }),
 
       // Sidebar
       sidebarCollapsed: true, // Default collapsed on mobile
