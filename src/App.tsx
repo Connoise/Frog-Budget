@@ -24,6 +24,7 @@ import {
   Upload,
   ChevronLeft,
   Heart,
+  ArrowUpDown,
 } from 'lucide-react'
 import {
   BarChart,
@@ -1398,12 +1399,32 @@ function PurchasesTab() {
   const { categories } = useCategories()
   const [searchTerm, setSearchTerm] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'added-desc' | 'added-asc' | 'amount-desc' | 'amount-asc'>('date-desc')
 
-  const filteredPurchases = purchases.filter((p) => {
-    if (searchTerm && !p.name.toLowerCase().includes(searchTerm.toLowerCase())) return false
-    if (filters.categoryId && p.category_id !== filters.categoryId) return false
-    return true
-  })
+  const filteredPurchases = purchases
+    .filter((p) => {
+      if (searchTerm && !p.name.toLowerCase().includes(searchTerm.toLowerCase())) return false
+      if (filters.categoryId && p.category_id !== filters.categoryId) return false
+      return true
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'date-desc':
+          return new Date(b.date).getTime() - new Date(a.date).getTime()
+        case 'date-asc':
+          return new Date(a.date).getTime() - new Date(b.date).getTime()
+        case 'added-desc':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        case 'added-asc':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        case 'amount-desc':
+          return b.amount - a.amount
+        case 'amount-asc':
+          return a.amount - b.amount
+        default:
+          return 0
+      }
+    })
 
   const getCategoryName = (categoryId: string) => categories.find((c) => c.id === categoryId)?.name || 'Unknown'
   const getCategoryColor = (categoryId: string) => categories.find((c) => c.id === categoryId)?.color || '#6b7280'
@@ -1472,6 +1493,21 @@ function PurchasesTab() {
             <option key={cat.id} value={cat.id}>{cat.name}</option>
           ))}
         </select>
+        <div className="relative">
+          <ArrowUpDown size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-frog-500 appearance-none"
+          >
+            <option value="date-desc">Date: Newest First</option>
+            <option value="date-asc">Date: Oldest First</option>
+            <option value="added-desc">Added: Most Recent</option>
+            <option value="added-asc">Added: Least Recent</option>
+            <option value="amount-desc">Amount: High to Low</option>
+            <option value="amount-asc">Amount: Low to High</option>
+          </select>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
