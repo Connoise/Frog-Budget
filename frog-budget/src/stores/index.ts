@@ -60,6 +60,15 @@ interface BudgetState {
   setShowAddCategory: (show: boolean) => void
   editingCategory: Category | null
   setEditingCategory: (category: Category | null) => void
+
+  // Sidebar
+  sidebarCollapsed: boolean
+  setSidebarCollapsed: (collapsed: boolean) => void
+  toggleSidebar: () => void
+
+  // CSV Import
+  showImportModal: boolean
+  setShowImportModal: (show: boolean) => void
 }
 
 const getCurrentMonth = () => {
@@ -157,12 +166,22 @@ export const useBudgetStore = create<BudgetState>()(
       setShowAddCategory: (show) => set({ showAddCategory: show, editingCategory: show ? null : null }),
       editingCategory: null,
       setEditingCategory: (category) => set({ editingCategory: category, showAddCategory: !!category }),
+
+      // Sidebar
+      sidebarCollapsed: true, // Default collapsed on mobile
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
+      // CSV Import
+      showImportModal: false,
+      setShowImportModal: (show) => set({ showImportModal: show }),
     }),
     {
       name: 'frog-budget-storage',
       partialize: (state) => ({
         isDarkMode: state.isDarkMode,
         selectedMonth: state.selectedMonth,
+        sidebarCollapsed: state.sidebarCollapsed,
       }),
     }
   )
