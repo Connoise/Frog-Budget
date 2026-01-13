@@ -1,5 +1,6 @@
 -- Wishlist Table Migration
 -- Run this in your Supabase SQL Editor to add wishlist functionality
+-- This only adds the wishlist table - it won't affect existing tables
 
 -- ============================================
 -- WISHLIST TABLE
@@ -31,6 +32,12 @@ CREATE INDEX IF NOT EXISTS idx_wishlist_priority ON wishlist(priority);
 -- Enable RLS
 ALTER TABLE wishlist ENABLE ROW LEVEL SECURITY;
 
+-- Drop policies if they exist (to avoid errors on re-run)
+DROP POLICY IF EXISTS "Users can view their own wishlist" ON wishlist;
+DROP POLICY IF EXISTS "Users can create their own wishlist items" ON wishlist;
+DROP POLICY IF EXISTS "Users can update their own wishlist items" ON wishlist;
+DROP POLICY IF EXISTS "Users can delete their own wishlist items" ON wishlist;
+
 -- Wishlist policies
 CREATE POLICY "Users can view their own wishlist"
     ON wishlist FOR SELECT
@@ -51,6 +58,7 @@ CREATE POLICY "Users can delete their own wishlist items"
 -- ============================================
 -- AUTO-UPDATE TIMESTAMPS
 -- ============================================
+DROP TRIGGER IF EXISTS update_wishlist_updated_at ON wishlist;
 CREATE TRIGGER update_wishlist_updated_at
     BEFORE UPDATE ON wishlist
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -58,4 +66,11 @@ CREATE TRIGGER update_wishlist_updated_at
 -- ============================================
 -- ENABLE REALTIME
 -- ============================================
-ALTER PUBLICATION supabase_realtime ADD TABLE wishlist;
+-- Note: This may error if already added, which is fine
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE wishlist;
+EXCEPTION
+    WHEN duplicate_object THEN
+        RAISE NOTICE 'wishlist table already added to realtime publication';
+END $$;
