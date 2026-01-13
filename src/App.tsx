@@ -22,7 +22,6 @@ import {
   Check,
   Menu,
   Upload,
-  FileText,
   ChevronLeft,
 } from 'lucide-react'
 import {
