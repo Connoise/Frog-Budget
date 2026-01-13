@@ -419,17 +419,16 @@ function CSVImportModal() {
       const previewData = csvData.map((row, rowIndex) => {
         let amount = parseFloat(row[amountIdx]?.replace(/[$,]/g, '') || '0')
 
-        // Skip credits, payments, and refunds (negative amounts)
-        if (amount < 0) return null
-
+        // Convert to positive (both Chase negative and Discover positive formats)
         amount = Math.abs(amount)
 
         if (amount <= 0 || !row[nameIdx]) return null
 
-        // Skip payment/credit descriptions
+        // Skip payment/credit descriptions (these are actual credits, not purchases)
         const description = row[nameIdx].toLowerCase()
-        if (description.includes('payment') || description.includes('credit') ||
-            description.includes('refund') || description.includes('cashback bonus')) return null
+        if (description.includes('payment') || description.includes('internet payment') ||
+            description.includes('refund') || description.includes('cashback bonus') ||
+            description.includes('rewards credit') || description.includes('credit adjustment')) return null
 
         return {
           date: row[dateIdx] || '',
