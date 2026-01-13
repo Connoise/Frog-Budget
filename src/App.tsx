@@ -348,7 +348,7 @@ function CSVImportModal() {
     category: '',
   })
   const [importing, setImporting] = useState(false)
-  const [preview, setPreview] = useState<Array<{ date: string; name: string; amount: number; category_id: string; rowIndex: number }>>([])
+  const [preview, setPreview] = useState<Array<{ date: string; name: string; amount: number; category_id: string; rowIndex: number; selected: boolean }>>([])
   const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null)
 
   const parseCSV = (text: string): string[][] => {
@@ -437,8 +437,9 @@ function CSVImportModal() {
           amount,
           category_id: categories[0]?.id || '',
           rowIndex,
+          selected: true,
         }
-      }).filter((p): p is { date: string; name: string; amount: number; category_id: string; rowIndex: number } => p !== null)
+      }).filter((p): p is { date: string; name: string; amount: number; category_id: string; rowIndex: number; selected: boolean } => p !== null)
 
       setPreview(previewData)
     } else {
@@ -447,12 +448,14 @@ function CSVImportModal() {
   }, [csvData, columnMapping, headers, categories])
 
   const handleImport = async () => {
-    if (!columnMapping.date || !columnMapping.name || !columnMapping.amount || preview.length === 0) {
+    const selectedItems = preview.filter(item => item.selected)
+
+    if (!columnMapping.date || !columnMapping.name || !columnMapping.amount || selectedItems.length === 0) {
       return
     }
 
-    // Check if all preview items have valid categories
-    const hasInvalidCategories = preview.some(p => !p.category_id)
+    // Check if all selected items have valid categories
+    const hasInvalidCategories = selectedItems.some(p => !p.category_id)
     if (hasInvalidCategories) {
       return
     }
@@ -466,7 +469,7 @@ function CSVImportModal() {
     let success = 0
     let failed = 0
 
-    for (const previewItem of preview) {
+    for (const previewItem of selectedItems) {
       try {
         const row = csvData[previewItem.rowIndex]
 
@@ -525,6 +528,19 @@ function CSVImportModal() {
       item.rowIndex === rowIndex ? { ...item, category_id: categoryId } : item
     ))
   }
+
+  const handleToggleItem = (rowIndex: number) => {
+    setPreview(prev => prev.map(item =>
+      item.rowIndex === rowIndex ? { ...item, selected: !item.selected } : item
+    ))
+  }
+
+  const handleToggleAll = () => {
+    const allSelected = preview.every(item => item.selected)
+    setPreview(prev => prev.map(item => ({ ...item, selected: !allSelected })))
+  }
+
+  const selectedCount = preview.filter(item => item.selected).length
 
   const handleClose = () => {
     setShowImportModal(false)
@@ -623,7 +639,9 @@ function CSVImportModal() {
           {preview.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium text-gray-900 dark:text-white">Review & Categorize ({preview.length} items)</h3>
+                <h3 className="font-medium text-gray-900 dark:text-white">
+                  Review & Categorize ({selectedCount} of {preview.length} selected)
+                </h3>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500 dark:text-gray-400">Set all to:</span>
                   <select
@@ -647,6 +665,14 @@ function CSVImportModal() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                     <tr>
+                      <th className="px-3 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={preview.every(item => item.selected)}
+                          onChange={handleToggleAll}
+                          className="w-4 h-4 text-frog-600 rounded focus:ring-2 focus:ring-frog-500"
+                        />
+                      </th>
                       <th className="px-3 py-2 text-left text-gray-600 dark:text-gray-300">Date</th>
                       <th className="px-3 py-2 text-left text-gray-600 dark:text-gray-300">Description</th>
                       <th className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">Amount</th>
@@ -655,7 +681,15 @@ function CSVImportModal() {
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {preview.map((row) => (
-                      <tr key={row.rowIndex}>
+                      <tr key={row.rowIndex} className={cn(!row.selected && "opacity-50")}>
+                        <td className="px-3 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={row.selected}
+                            onChange={() => handleToggleItem(row.rowIndex)}
+                            className="w-4 h-4 text-frog-600 rounded focus:ring-2 focus:ring-frog-500"
+                          />
+                        </td>
                         <td className="px-3 py-2 text-gray-900 dark:text-white text-xs">{row.date}</td>
                         <td className="px-3 py-2 text-gray-900 dark:text-white truncate max-w-[200px]">{row.name}</td>
                         <td className="px-3 py-2 text-right text-gray-900 dark:text-white">{formatCurrency(row.amount)}</td>
@@ -663,7 +697,8 @@ function CSVImportModal() {
                           <select
                             value={row.category_id}
                             onChange={(e) => handleCategoryChange(row.rowIndex, e.target.value)}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs"
+                            disabled={!row.selected}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {categories.map((c) => (
                               <option key={c.id} value={c.id}>{c.name}</option>
@@ -702,13 +737,13 @@ function CSVImportModal() {
           {!importResult && (
             <button
               onClick={handleImport}
-              disabled={importing || !columnMapping.date || !columnMapping.name || !columnMapping.amount || preview.length === 0}
+              disabled={importing || !columnMapping.date || !columnMapping.name || !columnMapping.amount || selectedCount === 0}
               className="flex-1 py-2 px-4 bg-frog-600 hover:bg-frog-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {importing ? 'Importing...' : (
                 <>
                   <Upload size={18} />
-                  Import {preview.length} {preview.length === 1 ? 'Row' : 'Rows'}
+                  Import {selectedCount} {selectedCount === 1 ? 'Row' : 'Rows'}
                 </>
               )}
             </button>
