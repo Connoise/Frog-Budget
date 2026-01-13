@@ -1,6 +1,5 @@
 import type { Category, Purchase, CategoryBudget, MonthlySnapshot, DailySpending, Alert, Profile } from '../types/supabase'
 
-// Helper functions
 const getMonthStart = (date: Date): Date => {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }
@@ -28,7 +27,6 @@ const isInRange = (date: Date, start: Date, end: Date): boolean => {
   return date >= start && date <= end
 }
 
-// Calculate monthly income based on frequency
 const getMonthlyIncome = (profile: Profile): number => {
   switch (profile.income_frequency) {
     case 'weekly':
@@ -61,14 +59,12 @@ export const analyticsService = {
     return categories.map((category) => {
       const categoryPurchases = purchases.filter((p) => p.category_id === category.id)
 
-      // Calculate budgets
       const monthlyBudget = (monthlyIncome * category.percentage) / 100
       const yearlyBudget = (yearlyIncome * category.percentage) / 100
       const dailyBudget = monthlyBudget / 30
       const weeklyBudget = monthlyBudget / 4.33
       const biweeklyBudget = monthlyBudget / 2.17
 
-      // Calculate spent amounts
       const todaySpent = categoryPurchases
         .filter((p) => isSameDay(new Date(p.date), today))
         .reduce((sum, p) => sum + p.amount, 0)
@@ -90,13 +86,11 @@ export const analyticsService = {
 
       const allTimeSpent = categoryPurchases.reduce((sum, p) => sum + p.amount, 0)
 
-      // Calculate remaining and percentages
       const monthlyRemaining = monthlyBudget - monthSpent
       const yearlyRemaining = yearlyBudget - yearSpent
       const monthlyPercentUsed = monthlyBudget > 0 ? (monthSpent / monthlyBudget) * 100 : 0
       const yearlyPercentUsed = yearlyBudget > 0 ? (yearSpent / yearlyBudget) * 100 : 0
 
-      // Determine status
       let status: CategoryBudget['status'] = 'ok'
       if (monthlyPercentUsed > 100) {
         status = 'overspent'
@@ -199,7 +193,6 @@ export const analyticsService = {
     const now = new Date()
 
     categoryBudgets.forEach((cb) => {
-      // Overspent alert
       if (cb.status === 'overspent') {
         alerts.push({
           id: `overspent-${cb.category.id}`,
@@ -213,7 +206,6 @@ export const analyticsService = {
         })
       }
 
-      // Warning alert (approaching budget)
       if (cb.status === 'danger') {
         alerts.push({
           id: `warning-${cb.category.id}`,
@@ -228,7 +220,6 @@ export const analyticsService = {
       }
     })
 
-    // Check for large purchases (>10% of total monthly budget in single purchase)
     const thisMonth = purchases.filter((p) => {
       const d = new Date(p.date)
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()

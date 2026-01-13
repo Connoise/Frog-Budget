@@ -5,14 +5,12 @@ import { purchaseService } from '../services/purchases'
 import { categoryService } from '../services/categories'
 import { profileService } from '../services/profiles'
 import { analyticsService } from '../services/analytics'
-import type { Purchase, Category, CategoryBudget, MonthlySnapshot, DailySpending, Alert } from '../types/supabase'
+import type { Purchase, Category, CategoryBudget, MonthlySnapshot, DailySpending, Alert, Profile } from '../types/supabase'
 
-// Auth hook
 export function useAuth() {
   const { user, setUser, setProfile, setIsLoading } = useBudgetStore()
 
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser({ id: session.user.id, email: session.user.email || '' })
@@ -22,9 +20,8 @@ export function useAuth() {
       setIsLoading(false)
     })
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_event, session) => {
         if (session?.user) {
           setUser({ id: session.user.id, email: session.user.email || '' })
         } else {
@@ -55,7 +52,6 @@ export function useAuth() {
   return { user, signIn, signUp, signOut }
 }
 
-// Profile hook
 export function useProfile() {
   const { user, profile, setProfile } = useBudgetStore()
 
@@ -66,13 +62,12 @@ export function useProfile() {
       let profileData = await profileService.get(user.id)
       
       if (!profileData) {
-        // Create default profile
         profileData = await profileService.create({
           id: user.id,
           email: user.email,
           display_name: user.email.split('@')[0],
           avatar_url: null,
-          income_amount: 2888.72, // Default from Excel
+          income_amount: 2888.72,
           income_frequency: 'biweekly',
           currency: 'USD',
         })
@@ -88,7 +83,7 @@ export function useProfile() {
     loadProfile()
   }, [loadProfile])
 
-  const updateProfile = async (updates: Partial<typeof profile>) => {
+  const updateProfile = async (updates: Partial<Profile>) => {
     if (!user || !profile) return
 
     try {
@@ -103,7 +98,6 @@ export function useProfile() {
   return { profile, loadProfile, updateProfile }
 }
 
-// Categories hook
 export function useCategories() {
   const { user, categories, setCategories, addCategory, updateCategory, deleteCategory } = useBudgetStore()
 
@@ -114,7 +108,6 @@ export function useCategories() {
       let cats = await categoryService.getAll(user.id)
       
       if (cats.length === 0) {
-        // Seed default categories
         await categoryService.seedDefaults(user.id)
         cats = await categoryService.getAll(user.id)
       }
@@ -129,7 +122,6 @@ export function useCategories() {
     loadCategories()
   }, [loadCategories])
 
-  // Real-time subscription
   useEffect(() => {
     if (!user) return
 
@@ -205,7 +197,6 @@ export function useCategories() {
   }
 }
 
-// Purchases hook
 export function usePurchases() {
   const { user, purchases, setPurchases, addPurchase, updatePurchase, deletePurchase, filters } = useBudgetStore()
 
@@ -224,7 +215,6 @@ export function usePurchases() {
     loadPurchases()
   }, [loadPurchases])
 
-  // Real-time subscription
   useEffect(() => {
     if (!user) return
 
@@ -307,7 +297,6 @@ export function usePurchases() {
   }
 }
 
-// Analytics hook
 export function useAnalytics(): {
   categoryBudgets: CategoryBudget[]
   monthlySnapshots: MonthlySnapshot[]

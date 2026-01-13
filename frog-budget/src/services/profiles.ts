@@ -11,34 +11,33 @@ export const profileService = {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        // No profile found, return null
         return null
       }
       throw error
     }
-    return data
+    return data as unknown as Profile
   },
 
   async update(userId: string, updates: Partial<Profile>): Promise<Profile> {
     const { data, error } = await supabase
       .from('profiles')
-      .update(updates)
+      .update(updates as Record<string, unknown>)
       .eq('id', userId)
       .select()
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as Profile
   },
 
   async create(profile: Omit<Profile, 'created_at' | 'updated_at'>): Promise<Profile> {
     const { data, error } = await supabase
       .from('profiles')
-      .insert(profile)
+      .insert(profile as Record<string, unknown>)
       .select()
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as Profile
   },
 }

@@ -37,7 +37,7 @@ export const purchaseService = {
     const { data, error } = await query
 
     if (error) throw error
-    return data || []
+    return (data || []) as unknown as Purchase[]
   },
 
   async getByMonth(userId: string, year: number, month: number): Promise<Purchase[]> {
@@ -53,30 +53,30 @@ export const purchaseService = {
       .order('date', { ascending: false })
 
     if (error) throw error
-    return data || []
+    return (data || []) as unknown as Purchase[]
   },
 
   async create(purchase: Omit<Purchase, 'id' | 'created_at' | 'updated_at'>): Promise<Purchase> {
     const { data, error } = await supabase
       .from('purchases')
-      .insert(purchase)
+      .insert(purchase as Record<string, unknown>)
       .select()
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as Purchase
   },
 
   async update(id: string, updates: Partial<Purchase>): Promise<Purchase> {
     const { data, error } = await supabase
       .from('purchases')
-      .update(updates)
+      .update(updates as Record<string, unknown>)
       .eq('id', id)
       .select()
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as Purchase
   },
 
   async delete(id: string): Promise<void> {
@@ -98,6 +98,6 @@ export const purchaseService = {
       .limit(50)
 
     if (error) throw error
-    return data || []
+    return (data || []) as unknown as Purchase[]
   },
 }
