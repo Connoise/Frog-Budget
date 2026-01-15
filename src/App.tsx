@@ -342,6 +342,7 @@ function CSVImportModal() {
 
   const [csvData, setCsvData] = useState<string[][]>([])
   const [headers, setHeaders] = useState<string[]>([])
+  const [csvFormat, setCsvFormat] = useState<'discover' | 'chase' | 'amazon'>('discover')
   const [columnMapping, setColumnMapping] = useState({
     date: '',
     name: '',
@@ -383,33 +384,96 @@ function CSVImportModal() {
     reader.onload = (event) => {
       const text = event.target?.result as string
       const parsed = parseCSV(text)
-      
+
       if (parsed.length > 0) {
         setHeaders(parsed[0])
         setCsvData(parsed.slice(1))
-        
-        // Auto-detect columns - prioritize transaction date over post date
+
+        // Auto-detect columns based on selected format
         const headerLower = parsed[0].map(h => h.toLowerCase())
-        const findDateColumn = () => {
-          // Prioritize transaction date columns
-          let idx = headerLower.findIndex(h => h.includes('transaction') && h.includes('date'))
-          if (idx >= 0) return parsed[0][idx]
-          idx = headerLower.findIndex(h => h.includes('trans.') && h.includes('date'))
-          if (idx >= 0) return parsed[0][idx]
-          // Fallback to any date column
-          idx = headerLower.findIndex(h => h.includes('date'))
-          return idx >= 0 ? parsed[0][idx] : ''
+
+        let dateColumn = ''
+        let nameColumn = ''
+        let amountColumn = ''
+
+        if (csvFormat === 'amazon') {
+          // Amazon-specific column detection
+          const orderDateIdx = headerLower.findIndex(h => h === 'order date')
+          const productNameIdx = headerLower.findIndex(h => h === 'product name')
+          const totalOwedIdx = headerLower.findIndex(h => h === 'total owed')
+
+          dateColumn = orderDateIdx >= 0 ? parsed[0][orderDateIdx] : ''
+          nameColumn = productNameIdx >= 0 ? parsed[0][productNameIdx] : ''
+          amountColumn = totalOwedIdx >= 0 ? parsed[0][totalOwedIdx] : ''
+        } else {
+          // Chase/Discover format detection
+          // Prioritize transaction date over post date
+          const findDateColumn = () => {
+            let idx = headerLower.findIndex(h => h.includes('transaction') && h.includes('date'))
+            if (idx >= 0) return parsed[0][idx]
+            idx = headerLower.findIndex(h => h.includes('trans.') && h.includes('date'))
+            if (idx >= 0) return parsed[0][idx]
+            // Fallback to any date column
+            idx = headerLower.findIndex(h => h.includes('date'))
+            return idx >= 0 ? parsed[0][idx] : ''
+          }
+
+          dateColumn = findDateColumn()
+          nameColumn = parsed[0][headerLower.findIndex(h => h.includes('description') || h.includes('name') || h.includes('merchant'))] || ''
+          amountColumn = parsed[0][headerLower.findIndex(h => h.includes('amount') || h.includes('debit') || h.includes('charge'))] || ''
         }
+
         setColumnMapping({
-          date: findDateColumn(),
-          name: parsed[0][headerLower.findIndex(h => h.includes('description') || h.includes('name') || h.includes('merchant'))] || '',
-          amount: parsed[0][headerLower.findIndex(h => h.includes('amount') || h.includes('debit') || h.includes('charge'))] || '',
+          date: dateColumn,
+          name: nameColumn,
+          amount: amountColumn,
           category: parsed[0][headerLower.findIndex(h => h.includes('category') || h.includes('type'))] || '',
         })
       }
     }
     reader.readAsText(file)
   }
+
+  // Re-detect columns when format changes
+  useEffect(() => {
+    if (headers.length > 0 && csvData.length > 0) {
+      const headerLower = headers.map(h => h.toLowerCase())
+
+      let dateColumn = ''
+      let nameColumn = ''
+      let amountColumn = ''
+
+      if (csvFormat === 'amazon') {
+        const orderDateIdx = headerLower.findIndex(h => h === 'order date')
+        const productNameIdx = headerLower.findIndex(h => h === 'product name')
+        const totalOwedIdx = headerLower.findIndex(h => h === 'total owed')
+
+        dateColumn = orderDateIdx >= 0 ? headers[orderDateIdx] : ''
+        nameColumn = productNameIdx >= 0 ? headers[productNameIdx] : ''
+        amountColumn = totalOwedIdx >= 0 ? headers[totalOwedIdx] : ''
+      } else {
+        const findDateColumn = () => {
+          let idx = headerLower.findIndex(h => h.includes('transaction') && h.includes('date'))
+          if (idx >= 0) return headers[idx]
+          idx = headerLower.findIndex(h => h.includes('trans.') && h.includes('date'))
+          if (idx >= 0) return headers[idx]
+          idx = headerLower.findIndex(h => h.includes('date'))
+          return idx >= 0 ? headers[idx] : ''
+        }
+
+        dateColumn = findDateColumn()
+        nameColumn = headers[headerLower.findIndex(h => h.includes('description') || h.includes('name') || h.includes('merchant'))] || ''
+        amountColumn = headers[headerLower.findIndex(h => h.includes('amount') || h.includes('debit') || h.includes('charge'))] || ''
+      }
+
+      setColumnMapping({
+        date: dateColumn,
+        name: nameColumn,
+        amount: amountColumn,
+        category: headers[headerLower.findIndex(h => h.includes('category') || h.includes('type'))] || '',
+      })
+    }
+  }, [csvFormat, headers, csvData])
 
   useEffect(() => {
     if (csvData.length > 0 && columnMapping.date && columnMapping.name && columnMapping.amount) {
@@ -477,14 +541,21 @@ function CSVImportModal() {
         let dateStr = row[dateIdx]
         let parsedDate: Date | null = null
 
+        // Try ISO 8601 format (Amazon: 2026-01-10T19:48:15Z)
+        if (dateStr.includes('T') && dateStr.includes('Z')) {
+          parsedDate = new Date(dateStr)
+        }
+
         // Try MM/DD/YYYY
-        const mdyMatch = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
-        if (mdyMatch) {
-          parsedDate = new Date(parseInt(mdyMatch[3]), parseInt(mdyMatch[1]) - 1, parseInt(mdyMatch[2]))
+        if (!parsedDate || isNaN(parsedDate.getTime())) {
+          const mdyMatch = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+          if (mdyMatch) {
+            parsedDate = new Date(parseInt(mdyMatch[3]), parseInt(mdyMatch[1]) - 1, parseInt(mdyMatch[2]))
+          }
         }
 
         // Try YYYY-MM-DD
-        if (!parsedDate) {
+        if (!parsedDate || isNaN(parsedDate.getTime())) {
           const isoMatch = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/)
           if (isoMatch) {
             parsedDate = new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]))
@@ -492,7 +563,7 @@ function CSVImportModal() {
         }
 
         // Try MM-DD-YYYY
-        if (!parsedDate) {
+        if (!parsedDate || isNaN(parsedDate.getTime())) {
           const mdyDash = dateStr.match(/(\d{1,2})-(\d{1,2})-(\d{4})/)
           if (mdyDash) {
             parsedDate = new Date(parseInt(mdyDash[3]), parseInt(mdyDash[1]) - 1, parseInt(mdyDash[2]))
@@ -546,6 +617,7 @@ function CSVImportModal() {
     setShowImportModal(false)
     setCsvData([])
     setHeaders([])
+    setCsvFormat('discover')
     setColumnMapping({ date: '', name: '', amount: '', category: '' })
     setPreview([])
     setImportResult(null)
@@ -570,6 +642,25 @@ function CSVImportModal() {
         </div>
 
         <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* CSV Format Selector */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              CSV Format
+            </label>
+            <select
+              value={csvFormat}
+              onChange={(e) => setCsvFormat(e.target.value as 'discover' | 'chase' | 'amazon')}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              <option value="discover">Discover Credit Card</option>
+              <option value="chase">Chase Credit Card</option>
+              <option value="amazon">Amazon Order History</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Select the source of your CSV file for automatic column detection
+            </p>
+          </div>
+
           {/* File Upload */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
