@@ -680,7 +680,7 @@ function CSVImportModal() {
             <div className="space-y-3">
               <h3 className="font-medium text-gray-900 dark:text-white">Map Columns</h3>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Date Column *</label>
                   <select
@@ -729,12 +729,12 @@ function CSVImportModal() {
           {/* Preview */}
           {preview.length > 0 && (
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
                 <h3 className="font-medium text-gray-900 dark:text-white">
                   Review & Categorize ({selectedCount} of {preview.length} selected)
                 </h3>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 dark:text-gray-400">Set all to:</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Set all to:</span>
                   <select
                     onChange={(e) => {
                       const categoryId = e.target.value
@@ -743,7 +743,7 @@ function CSVImportModal() {
                         e.target.value = ''
                       }
                     }}
-                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs"
+                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs flex-1 sm:flex-none"
                   >
                     <option value="">Choose...</option>
                     {categories.map((c) => (
@@ -752,54 +752,56 @@ function CSVImportModal() {
                   </select>
                 </div>
               </div>
-              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
-                    <tr>
-                      <th className="px-3 py-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={preview.every(item => item.selected)}
-                          onChange={handleToggleAll}
-                          className="w-4 h-4 text-frog-600 rounded focus:ring-2 focus:ring-frog-500"
-                        />
-                      </th>
-                      <th className="px-3 py-2 text-left text-gray-600 dark:text-gray-300">Date</th>
-                      <th className="px-3 py-2 text-left text-gray-600 dark:text-gray-300">Description</th>
-                      <th className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">Amount</th>
-                      <th className="px-3 py-2 text-left text-gray-600 dark:text-gray-300">Category</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {preview.map((row) => (
-                      <tr key={row.rowIndex} className={cn(!row.selected && "opacity-50")}>
-                        <td className="px-3 py-2 text-center">
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-auto max-h-96">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[640px]">
+                    <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-center whitespace-nowrap">
                           <input
                             type="checkbox"
-                            checked={row.selected}
-                            onChange={() => handleToggleItem(row.rowIndex)}
+                            checked={preview.every(item => item.selected)}
+                            onChange={handleToggleAll}
                             className="w-4 h-4 text-frog-600 rounded focus:ring-2 focus:ring-frog-500"
                           />
-                        </td>
-                        <td className="px-3 py-2 text-gray-900 dark:text-white text-xs">{row.date}</td>
-                        <td className="px-3 py-2 text-gray-900 dark:text-white truncate max-w-[200px]">{row.name}</td>
-                        <td className="px-3 py-2 text-right text-gray-900 dark:text-white">{formatCurrency(row.amount)}</td>
-                        <td className="px-3 py-2">
-                          <select
-                            value={row.category_id}
-                            onChange={(e) => handleCategoryChange(row.rowIndex, e.target.value)}
-                            disabled={!row.selected}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {categories.map((c) => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
-                        </td>
+                        </th>
+                        <th className="px-3 py-2 text-left text-gray-600 dark:text-gray-300 whitespace-nowrap">Date</th>
+                        <th className="px-3 py-2 text-left text-gray-600 dark:text-gray-300 whitespace-nowrap">Description</th>
+                        <th className="px-3 py-2 text-right text-gray-600 dark:text-gray-300 whitespace-nowrap">Amount</th>
+                        <th className="px-3 py-2 text-left text-gray-600 dark:text-gray-300 whitespace-nowrap min-w-[150px]">Category</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {preview.map((row) => (
+                        <tr key={row.rowIndex} className={cn(!row.selected && "opacity-50")}>
+                          <td className="px-3 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              checked={row.selected}
+                              onChange={() => handleToggleItem(row.rowIndex)}
+                              className="w-4 h-4 text-frog-600 rounded focus:ring-2 focus:ring-frog-500"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-gray-900 dark:text-white text-xs whitespace-nowrap">{row.date}</td>
+                          <td className="px-3 py-2 text-gray-900 dark:text-white max-w-[250px] truncate">{row.name}</td>
+                          <td className="px-3 py-2 text-right text-gray-900 dark:text-white whitespace-nowrap">{formatCurrency(row.amount)}</td>
+                          <td className="px-3 py-2">
+                            <select
+                              value={row.category_id}
+                              onChange={(e) => handleCategoryChange(row.rowIndex, e.target.value)}
+                              disabled={!row.selected}
+                              className="w-full min-w-[130px] px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {categories.map((c) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
