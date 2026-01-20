@@ -1,5 +1,10 @@
 import type { Category, Purchase, CategoryBudget, MonthlySnapshot, DailySpending, Alert, Profile } from '../types/supabase'
 
+// Helper to get month string in YYYY-MM format
+const getMonthString = (date: Date): string => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
 const getMonthStart = (date: Date): Date => {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }
@@ -40,11 +45,44 @@ const getMonthlyIncome = (profile: Profile): number => {
   }
 }
 
+// Calculate rollover (under/overspend) from all previous months for a category
+const calculateCategoryRollover = (
+  categoryId: string,
+  purchases: Purchase[],
+  monthlyBudget: number,
+  currentMonthStart: Date
+): number => {
+  // Group purchases by month (excluding current month)
+  const purchasesByMonth: Record<string, number> = {}
+
+  purchases.forEach((p) => {
+    const purchaseDate = new Date(p.date)
+    if (p.category_id === categoryId && purchaseDate < currentMonthStart) {
+      const monthKey = getMonthString(purchaseDate)
+      purchasesByMonth[monthKey] = (purchasesByMonth[monthKey] || 0) + p.amount
+    }
+  })
+
+  // Calculate cumulative rollover
+  // For each past month: underspend = positive rollover, overspend = negative rollover
+  let cumulativeRollover = 0
+  const months = Object.keys(purchasesByMonth).sort()
+
+  months.forEach((month) => {
+    const spent = purchasesByMonth[month]
+    const remaining = monthlyBudget - spent
+    cumulativeRollover += remaining
+  })
+
+  return cumulativeRollover
+}
+
 export const analyticsService = {
   calculateCategoryBudgets(
     categories: Category[],
     purchases: Purchase[],
-    profile: Profile
+    profile: Profile,
+    enableRollover: boolean = true
   ): CategoryBudget[] {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -73,12 +111,15 @@ export const analyticsService = {
         .filter((p) => new Date(p.date) >= weekStart)
         .reduce((sum, p) => sum + p.amount, 0)
 
-      const monthSpent = categoryPurchases
+      // Get this month's purchases for the expansion view
+      const monthlyPurchasesList = categoryPurchases
         .filter((p) => {
           const d = new Date(p.date)
           return isInRange(d, monthStart, monthEnd)
         })
-        .reduce((sum, p) => sum + p.amount, 0)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+      const monthSpent = monthlyPurchasesList.reduce((sum, p) => sum + p.amount, 0)
 
       const yearSpent = categoryPurchases
         .filter((p) => new Date(p.date) >= yearStart)
@@ -86,17 +127,29 @@ export const analyticsService = {
 
       const allTimeSpent = categoryPurchases.reduce((sum, p) => sum + p.amount, 0)
 
+      // Calculate rollover from previous months
+      const rolloverAmount = enableRollover
+        ? calculateCategoryRollover(category.id, purchases, monthlyBudget, monthStart)
+        : 0
+
+      // Effective budget = base budget + rollover (positive rollover = more to spend)
+      const effectiveBudget = monthlyBudget + rolloverAmount
+      const effectiveRemaining = effectiveBudget - monthSpent
+      const effectivePercentUsed = effectiveBudget > 0 ? (monthSpent / effectiveBudget) * 100 : 0
+
       const monthlyRemaining = monthlyBudget - monthSpent
       const yearlyRemaining = yearlyBudget - yearSpent
       const monthlyPercentUsed = monthlyBudget > 0 ? (monthSpent / monthlyBudget) * 100 : 0
       const yearlyPercentUsed = yearlyBudget > 0 ? (yearSpent / yearlyBudget) * 100 : 0
 
+      // Status based on effective budget when rollover is enabled
+      const percentForStatus = enableRollover ? effectivePercentUsed : monthlyPercentUsed
       let status: CategoryBudget['status'] = 'ok'
-      if (monthlyPercentUsed > 100) {
+      if (percentForStatus > 100) {
         status = 'overspent'
-      } else if (monthlyPercentUsed > 80) {
+      } else if (percentForStatus > 80) {
         status = 'danger'
-      } else if (monthlyPercentUsed > 60) {
+      } else if (percentForStatus > 60) {
         status = 'warning'
       }
 
@@ -125,6 +178,13 @@ export const analyticsService = {
           yearly: yearlyPercentUsed,
         },
         status,
+        rollover: {
+          amount: rolloverAmount,
+          effectiveBudget,
+          effectiveRemaining,
+          effectivePercentUsed,
+        },
+        monthlyPurchases: monthlyPurchasesList,
       }
     })
   },

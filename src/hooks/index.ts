@@ -386,7 +386,7 @@ export function useWishlist() {
   }
 }
 
-export function useAnalytics(includeWishlist = false): {
+export function useAnalytics(includeWishlist = false, enableRollover = true): {
   categoryBudgets: CategoryBudget[]
   monthlySnapshots: MonthlySnapshot[]
   dailySpending: DailySpending[]
@@ -394,6 +394,8 @@ export function useAnalytics(includeWishlist = false): {
   projections: { projected: number; budgeted: number; daysRemaining: number; dailyAverage: number }
   totalSpentThisMonth: number
   totalBudgetedThisMonth: number
+  totalEffectiveBudgetThisMonth: number
+  totalRollover: number
   totalWishlistCost: number
 } {
   const { profile, categories, purchases, wishlist } = useBudgetStore()
@@ -409,6 +411,8 @@ export function useAnalytics(includeWishlist = false): {
       projections: { projected: 0, budgeted: 0, daysRemaining: 0, dailyAverage: 0 },
       totalSpentThisMonth: 0,
       totalBudgetedThisMonth: 0,
+      totalEffectiveBudgetThisMonth: 0,
+      totalRollover: 0,
       totalWishlistCost,
     }
   }
@@ -425,7 +429,7 @@ export function useAnalytics(includeWishlist = false): {
 
   const combinedPurchases = includeWishlist ? [...purchases, ...simulatedPurchases] : purchases
 
-  const categoryBudgets = analyticsService.calculateCategoryBudgets(categories, combinedPurchases, profile)
+  const categoryBudgets = analyticsService.calculateCategoryBudgets(categories, combinedPurchases, profile, enableRollover)
   const monthlySnapshots = analyticsService.getMonthlySnapshots(purchases, categories, profile, 12)
   const dailySpending = analyticsService.getDailySpending(purchases, 30)
   const alerts = analyticsService.generateAlerts(categoryBudgets, combinedPurchases)
@@ -433,6 +437,8 @@ export function useAnalytics(includeWishlist = false): {
 
   const totalSpentThisMonth = categoryBudgets.reduce((sum, cb) => sum + cb.spent.thisMonth, 0)
   const totalBudgetedThisMonth = categoryBudgets.reduce((sum, cb) => sum + cb.budgeted.monthly, 0)
+  const totalEffectiveBudgetThisMonth = categoryBudgets.reduce((sum, cb) => sum + cb.rollover.effectiveBudget, 0)
+  const totalRollover = categoryBudgets.reduce((sum, cb) => sum + cb.rollover.amount, 0)
 
   return {
     categoryBudgets,
@@ -442,6 +448,8 @@ export function useAnalytics(includeWishlist = false): {
     projections,
     totalSpentThisMonth,
     totalBudgetedThisMonth,
+    totalEffectiveBudgetThisMonth,
+    totalRollover,
     totalWishlistCost,
   }
 }
