@@ -100,6 +100,15 @@ export interface CategoryBudget {
     yearly: number
   }
   status: 'ok' | 'warning' | 'danger' | 'overspent'
+  // Rollover tracking
+  rollover: {
+    amount: number       // Positive = surplus carried forward, Negative = deficit carried forward
+    effectiveBudget: number  // Monthly budget adjusted for rollover
+    effectiveRemaining: number // Remaining after accounting for rollover
+    effectivePercentUsed: number // Percent used with rollover factored in
+  }
+  // Purchases in this category for the current month (for expansion view)
+  monthlyPurchases: Purchase[]
 }
 
 export interface MonthlySnapshot {

@@ -23,8 +23,11 @@ import {
   Menu,
   Upload,
   ChevronLeft,
+  ChevronDown,
+  ChevronRight,
   Heart,
   ArrowUpDown,
+  RefreshCw,
 } from 'lucide-react'
 import {
   BarChart,
@@ -1953,8 +1956,22 @@ function WishlistTab() {
 // ============================================
 function AnalysisTab() {
   const [includeWishlist, setIncludeWishlist] = useState(false)
-  const { categoryBudgets, monthlySnapshots, dailySpending, totalWishlistCost } = useAnalytics(includeWishlist)
+  const [enableRollover, setEnableRollover] = useState(true)
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+  const { categoryBudgets, monthlySnapshots, dailySpending, totalWishlistCost, totalRollover, totalEffectiveBudgetThisMonth, totalBudgetedThisMonth, totalSpentThisMonth } = useAnalytics(includeWishlist, enableRollover)
   const { wishlist } = useBudgetStore()
+
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId)
+      } else {
+        newSet.add(categoryId)
+      }
+      return newSet
+    })
+  }
 
   const pieData = categoryBudgets.map((cb) => ({
     name: cb.category.name,
@@ -1980,23 +1997,65 @@ function AnalysisTab() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Analysis</h1>
           <p className="text-gray-600 dark:text-gray-400">Visualize your spending patterns</p>
         </div>
-        {wishlist.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-700">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={includeWishlist}
-                onChange={(e) => setIncludeWishlist(e.target.checked)}
+                checked={enableRollover}
+                onChange={(e) => setEnableRollover(e.target.checked)}
                 className="w-4 h-4 text-frog-600 rounded focus:ring-2 focus:ring-frog-500"
               />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Include Wishlist</span>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Budget Rollover</span>
             </label>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              ({formatCurrency(totalWishlistCost)})
-            </span>
+            <RefreshCw size={14} className="text-gray-400" />
           </div>
-        )}
+          {wishlist.length > 0 && (
+            <div className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-700">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeWishlist}
+                  onChange={(e) => setIncludeWishlist(e.target.checked)}
+                  className="w-4 h-4 text-frog-600 rounded focus:ring-2 focus:ring-frog-500"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Include Wishlist</span>
+              </label>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                ({formatCurrency(totalWishlistCost)})
+              </span>
+            </div>
+          )}
+        </div>
       </div>
+
+      {enableRollover && totalRollover !== 0 && (
+        <div className={cn(
+          "border rounded-xl p-4",
+          totalRollover > 0
+            ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+            : "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800"
+        )}>
+          <div className="flex items-center gap-2 mb-2">
+            <RefreshCw size={18} className={totalRollover > 0 ? "text-green-500" : "text-orange-500"} />
+            <h3 className={cn(
+              "font-semibold",
+              totalRollover > 0 ? "text-green-700 dark:text-green-400" : "text-orange-700 dark:text-orange-400"
+            )}>
+              {totalRollover > 0 ? 'Surplus Rollover' : 'Deficit Rollover'}
+            </h3>
+          </div>
+          <p className={cn(
+            "text-sm",
+            totalRollover > 0 ? "text-green-600 dark:text-green-300" : "text-orange-600 dark:text-orange-300"
+          )}>
+            {totalRollover > 0
+              ? `You have ${formatCurrency(totalRollover)} in unspent budget from previous months, giving you an effective budget of ${formatCurrency(totalEffectiveBudgetThisMonth)} this month.`
+              : `You overspent by ${formatCurrency(Math.abs(totalRollover))} in previous months, reducing your effective budget to ${formatCurrency(totalEffectiveBudgetThisMonth)} this month.`
+            }
+          </p>
+        </div>
+      )}
 
       {includeWishlist && wishlist.length > 0 && (
         <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-4">
@@ -2009,6 +2068,108 @@ function AnalysisTab() {
           </p>
         </div>
       )}
+
+      {/* Category Budgets with Expandable Details */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900 dark:text-white">Category Budgets</h3>
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              {formatCurrency(totalSpentThisMonth)} / {formatCurrency(enableRollover ? totalEffectiveBudgetThisMonth : totalBudgetedThisMonth)}
+              {enableRollover && totalRollover !== 0 && (
+                <span className={cn("ml-2", totalRollover > 0 ? "text-green-500" : "text-orange-500")}>
+                  ({totalRollover > 0 ? '+' : ''}{formatCurrency(totalRollover)} rollover)
+                </span>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Click on a category to view individual purchases</p>
+        </div>
+        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+          {categoryBudgets.map((cb) => {
+            const isExpanded = expandedCategories.has(cb.category.id)
+            const budgetToShow = enableRollover ? cb.rollover.effectiveBudget : cb.budgeted.monthly
+            const percentToShow = enableRollover ? cb.rollover.effectivePercentUsed : cb.percentUsed.monthly
+
+            return (
+              <div key={cb.category.id}>
+                <button
+                  onClick={() => toggleCategory(cb.category.id)}
+                  className="w-full p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {isExpanded ? (
+                          <ChevronDown size={16} className="text-gray-400" />
+                        ) : (
+                          <ChevronRight size={16} className="text-gray-400" />
+                        )}
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cb.category.color }} />
+                        <span className="font-medium text-gray-900 dark:text-white text-sm">{cb.category.name}</span>
+                        {cb.monthlyPurchases.length > 0 && (
+                          <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+                            {cb.monthlyPurchases.length} {cb.monthlyPurchases.length === 1 ? 'item' : 'items'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right text-sm">
+                        <span className={cn("font-medium", getStatusTextColor(cb.status))}>{formatCurrency(cb.spent.thisMonth)}</span>
+                        <span className="text-gray-500 dark:text-gray-400"> / {formatCurrency(budgetToShow)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 pl-6">
+                      <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                        <div className={cn("h-2 rounded-full transition-all", getProgressBarColor(percentToShow))} style={{ width: `${Math.min(percentToShow, 100)}%` }} />
+                      </div>
+                      <span className={cn("text-xs font-medium w-10 text-right", getStatusTextColor(cb.status))}>{formatPercentage(percentToShow, 0)}</span>
+                    </div>
+                    {enableRollover && cb.rollover.amount !== 0 && (
+                      <div className="pl-6 flex items-center gap-2 text-xs">
+                        <RefreshCw size={12} className={cb.rollover.amount > 0 ? "text-green-500" : "text-orange-500"} />
+                        <span className={cb.rollover.amount > 0 ? "text-green-600 dark:text-green-400" : "text-orange-600 dark:text-orange-400"}>
+                          {cb.rollover.amount > 0 ? '+' : ''}{formatCurrency(cb.rollover.amount)} rollover
+                          <span className="text-gray-400 ml-1">
+                            (Base: {formatCurrency(cb.budgeted.monthly)})
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </button>
+
+                {/* Expanded Purchase List */}
+                {isExpanded && (
+                  <div className="bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700">
+                    {cb.monthlyPurchases.length > 0 ? (
+                      <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {cb.monthlyPurchases.map((purchase) => (
+                          <div key={purchase.id} className="px-6 py-3 flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{purchase.name}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {formatShortDate(purchase.date)}
+                                {purchase.notes && <span className="ml-2">- {purchase.notes}</span>}
+                              </p>
+                            </div>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white ml-4">
+                              {formatCurrency(purchase.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 text-center">
+                        No purchases this month
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-700">
