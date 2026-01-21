@@ -338,7 +338,7 @@ function MobileHeader() {
 // CSV IMPORT MODAL
 // ============================================
 function CSVImportModal() {
-  const { showImportModal, setShowImportModal } = useBudgetStore()
+  const { showImportModal, setShowImportModal, purchases } = useBudgetStore()
   const { categories } = useCategories()
   const { createPurchase } = usePurchases()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -353,8 +353,32 @@ function CSVImportModal() {
     category: '',
   })
   const [importing, setImporting] = useState(false)
-  const [preview, setPreview] = useState<Array<{ date: string; name: string; amount: number; category_id: string; rowIndex: number; selected: boolean }>>([])
+  const [preview, setPreview] = useState<Array<{ date: string; name: string; amount: number; category_id: string; rowIndex: number; selected: boolean; isDuplicate: boolean }>>([])
   const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null)
+
+  // Helper function to check if a purchase is a duplicate
+  const isDuplicatePurchase = (name: string, amount: number, dateStr: string): boolean => {
+    const normalizedName = name.toLowerCase().trim()
+    // Parse the date to YYYY-MM-DD format for comparison
+    let formattedDate = dateStr
+
+    // Try to parse the date string into YYYY-MM-DD
+    if (dateStr.includes('T') && dateStr.includes('Z')) {
+      formattedDate = new Date(dateStr).toISOString().split('T')[0]
+    } else if (dateStr.includes('/')) {
+      const parts = dateStr.split('/')
+      if (parts.length === 3) {
+        const [month, day, year] = parts
+        formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+      }
+    }
+
+    return purchases.some(p =>
+      p.name.toLowerCase().trim() === normalizedName &&
+      Math.abs(p.amount - amount) < 0.01 &&
+      p.date === formattedDate
+    )
+  }
 
   const parseCSV = (text: string): string[][] => {
     const lines = text.trim().split('\n')
@@ -498,21 +522,25 @@ function CSVImportModal() {
             description.includes('refund') || description.includes('cashback bonus') ||
             description.includes('rewards credit') || description.includes('credit adjustment')) return null
 
+        const name = row[nameIdx] || ''
+        const date = row[dateIdx] || ''
+
         return {
-          date: row[dateIdx] || '',
-          name: row[nameIdx] || '',
+          date,
+          name,
           amount,
           category_id: categories[0]?.id || '',
           rowIndex,
           selected: true,
+          isDuplicate: isDuplicatePurchase(name, amount, date),
         }
-      }).filter((p): p is { date: string; name: string; amount: number; category_id: string; rowIndex: number; selected: boolean } => p !== null)
+      }).filter((p): p is { date: string; name: string; amount: number; category_id: string; rowIndex: number; selected: boolean; isDuplicate: boolean } => p !== null)
 
       setPreview(previewData)
     } else {
       setPreview([])
     }
-  }, [csvData, columnMapping, headers, categories])
+  }, [csvData, columnMapping, headers, categories, purchases])
 
   const handleImport = async () => {
     const selectedItems = preview.filter(item => item.selected)
@@ -615,6 +643,7 @@ function CSVImportModal() {
   }
 
   const selectedCount = preview.filter(item => item.selected).length
+  const duplicateCount = preview.filter(item => item.selected && item.isDuplicate).length
 
   const handleClose = () => {
     setShowImportModal(false)
@@ -729,6 +758,21 @@ function CSVImportModal() {
             </div>
           )}
 
+          {/* Duplicate Warning Banner */}
+          {preview.length > 0 && duplicateCount > 0 && (
+            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium text-amber-800 dark:text-amber-300">
+                  {duplicateCount} potential duplicate{duplicateCount === 1 ? '' : 's'} detected
+                </p>
+                <p className="text-amber-700 dark:text-amber-400 mt-0.5">
+                  These items match existing purchases with the same name, amount, and date. They may be re-purchases or duplicate entries.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Preview */}
           {preview.length > 0 && (
             <div>
@@ -768,6 +812,7 @@ function CSVImportModal() {
                             className="w-4 h-4 text-frog-600 rounded focus:ring-2 focus:ring-frog-500"
                           />
                         </th>
+                        <th className="px-2 py-2 text-center text-gray-600 dark:text-gray-300 whitespace-nowrap w-8"></th>
                         <th className="px-3 py-2 text-left text-gray-600 dark:text-gray-300 whitespace-nowrap">Date</th>
                         <th className="px-3 py-2 text-left text-gray-600 dark:text-gray-300 whitespace-nowrap">Description</th>
                         <th className="px-3 py-2 text-right text-gray-600 dark:text-gray-300 whitespace-nowrap">Amount</th>
@@ -776,7 +821,10 @@ function CSVImportModal() {
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                       {preview.map((row) => (
-                        <tr key={row.rowIndex} className={cn(!row.selected && "opacity-50")}>
+                        <tr key={row.rowIndex} className={cn(
+                          !row.selected && "opacity-50",
+                          row.isDuplicate && row.selected && "bg-amber-50/50 dark:bg-amber-900/10"
+                        )}>
                           <td className="px-3 py-2 text-center">
                             <input
                               type="checkbox"
@@ -784,6 +832,13 @@ function CSVImportModal() {
                               onChange={() => handleToggleItem(row.rowIndex)}
                               className="w-4 h-4 text-frog-600 rounded focus:ring-2 focus:ring-frog-500"
                             />
+                          </td>
+                          <td className="px-2 py-2 text-center">
+                            {row.isDuplicate && (
+                              <span title="Potential duplicate - matches existing purchase">
+                                <AlertTriangle size={16} className="text-amber-500" />
+                              </span>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-gray-900 dark:text-white text-xs whitespace-nowrap">{row.date}</td>
                           <td className="px-3 py-2 text-gray-900 dark:text-white max-w-[250px] truncate">{row.name}</td>
@@ -854,7 +909,7 @@ function CSVImportModal() {
 // PURCHASE FORM MODAL
 // ============================================
 function PurchaseModal() {
-  const { showAddPurchase, setShowAddPurchase, editingPurchase, setEditingPurchase } = useBudgetStore()
+  const { showAddPurchase, setShowAddPurchase, editingPurchase, setEditingPurchase, purchases } = useBudgetStore()
   const { categories } = useCategories()
   const { createPurchase, editPurchase } = usePurchases()
 
@@ -867,6 +922,13 @@ function PurchaseModal() {
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  // Check if current form data matches an existing purchase (for new purchases only)
+  const isDuplicate = !editingPurchase && formData.name && formData.amount && formData.date && purchases.some(p =>
+    p.name.toLowerCase().trim() === formData.name.toLowerCase().trim() &&
+    Math.abs(p.amount - parseFloat(formData.amount || '0')) < 0.01 &&
+    p.date === formData.date
+  )
 
   useEffect(() => {
     if (editingPurchase) {
@@ -1013,6 +1075,18 @@ function PurchaseModal() {
               placeholder="Optional notes..."
             />
           </div>
+
+          {isDuplicate && (
+            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+              <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium text-amber-800 dark:text-amber-300">Potential duplicate entry</p>
+                <p className="text-amber-700 dark:text-amber-400 mt-0.5">
+                  A purchase with the same name, amount, and date already exists. This may be a re-purchase or duplicate entry.
+                </p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="p-3 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-lg text-sm">{error}</div>
